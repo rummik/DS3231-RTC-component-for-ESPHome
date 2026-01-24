@@ -24,47 +24,77 @@ The DS3231 is a low-cost, extremely accurate I2C real-time clock (RTC) with an i
 
 ```yaml
 esphome:
-    name: my_ds3231_clock
-    includes:
-        - ds3231/ds3231.h
-        - ds3231/ds3231.cpp
+  name: my_ds3231_clock
+  platform: ESP8266  # or ESP32
+  board: nodemcuv2   # adjust to your board
 
+# Use external component from GitHub
 external_components:
-    - source: github://<your-github-username>/DS3231-RTC-component-for-ESPHome
-        components: [ ds3231 ]
+  - source: github://your-github-username/DS3231-RTC-component-for-ESPHome
+    components: [ ds3231 ]
 
 # Enable I2C bus
 i2c:
-    sda: D2
-    scl: D1
-    scan: true
+  sda: GPIO4   # D2 on NodeMCU
+  scl: GPIO5   # D1 on NodeMCU
+  scan: true
+  frequency: 400kHz
 
 # Time component using DS3231
 time:
-    - platform: ds3231
-        id: ds3231_time
-        temperature:
-            name: "DS3231 Temperature"
+  - platform: ds3231
+    id: ds3231_time
+    address: 0x68  # Default I2C address
+    update_interval: 60s  # How often to read from RTC (default: 60s)
+    timezone: Europe/Berlin  # Set your timezone
+    
+    # Optional: Expose the built-in temperature sensor
+    temperature:
+      name: "DS3231 Temperature"
+      accuracy_decimals: 2
 
-# Optional: Expose actions for automations
-# Example: Write current time to RTC
-# automation:
-#   - trigger:
-#       ...
-#     action:
-#       - ds3231.write_time: ds3231_time
-#
-#   - trigger:
-#       ...
-#     action:
-#       - ds3231.read_time: ds3231_time
+# Optional: Add buttons for manual synchronization
+button:
+  - platform: template
+    name: "Write Time to RTC"
+    on_press:
+      - ds3231.write_time: ds3231_time
+  
+  - platform: template
+    name: "Read Time from RTC"
+    on_press:
+      - ds3231.read_time: ds3231_time
+
+# Optional: Automation example - sync RTC on boot
+on_boot:
+  - priority: -100  # Run after WiFi/time sync
+    then:
+      - delay: 5s
+      - ds3231.write_time: ds3231_time
+      - logger.log: "System time written to DS3231 RTC"
 ```
 
 ## Usage
 
-- The component will automatically keep the RTC in sync with the ESP's system time.
-- The temperature sensor will be available as a standard ESPHome sensor entity.
-- You can use the provided actions (`ds3231.write_time`, `ds3231.read_time`) in automations to manually synchronize the RTC or read the time from the module.
+### Time Synchronization
+- The component periodically reads the time from the RTC (default: every 60 seconds)
+- On boot, the ESP first synchronizes with NTP (if WiFi is available), then you can write that time to the RTC
+- If the ESP loses power, it will read the time from the RTC on next boot to restore accurate timekeeping
+
+### Temperature Sensor
+- The DS3231 has a built-in temperature sensor (primarily for crystal compensation)
+- It will be available as a standard ESPHome sensor entity if configured
+- Temperature range: -40°C to +85°C, accuracy: ±3°C
+- Note: This sensor reflects the module's internal temperature, not necessarily ambient temperature
+
+### Actions
+- `ds3231.write_time`: Writes the current ESP system time to the RTC (useful after NTP sync)
+- `ds3231.read_time`: Reads time from the RTC and synchronizes the ESP system clock (happens automatically)
+
+### Update Interval
+- Configure `update_interval` to control how often the component reads from the RTC
+- Default is 60 seconds - reduce for more frequent updates or increase to save I2C bus bandwidth
+- Each update also reads the temperature sensor if configured
 
 ## Notes
 
